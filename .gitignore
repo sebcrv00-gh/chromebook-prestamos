@@ -1,0 +1,9 @@
+backend/.env
+backend/node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.log
+.DS_Store
+.idea/
+.vscode/

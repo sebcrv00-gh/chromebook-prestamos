@@ -1,0 +1,190 @@
+// Prisma Schema - Sistema de Gestión de Préstamos de Chromebooks
+// Corporación San Bonifacio de las Lanzas
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  DOCENTE
+  ESTUDIANTE
+}
+
+enum ReservationStatus {
+  PENDIENTE
+  APROBADA
+  PARCIAL
+  RECHAZADA
+  CANCELADA
+  DEVUELTA
+}
+
+enum NotificationType {
+  RESERVA_APROBADA
+  RESERVA_RECHAZADA
+  RESERVA_PARCIAL
+  STOCK_BAJO
+  STOCK_AGOTADO
+  SISTEMA
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  TRANSFER
+  CANCEL
+  RETURN
+}
+
+enum CycleType {
+  EXPLORATORIO
+  CONCEPTUAL
+  CONTEXTUAL
+  PROYECTIVO
+}
+
+// ─── MODELS ──────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  role          Role     @default(DOCENTE)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  reservations  Reservation[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model Cycle {
+  id                String    @id @default(uuid())
+  name              String    // e.g., "Ciclo Exploratorio 2026"
+  type              CycleType // EXPLORATORIO, CONCEPTUAL, CONTEXTUAL, PROYECTIVO
+  gradeRange        String    @map("grade_range") // e.g., "Transición a 2°", "3° a 5°"
+  description       String?   // Optional description of the cycle
+  year              Int       // Academic year
+  totalChromebooks  Int       @default(0) @map("total_chromebooks") // Total assigned capacity for this cycle
+  reservedChromebooks Int     @default(0) @map("reserved_quantity")   // Sum of active reservations
+  active            Boolean   @default(false)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  reservations Reservation[]
+  cartCycles   CartCycle[]
+
+  @@map("cycles")
+}
+
+model Cart {
+  id                String    @id @default(uuid())
+  name              String    // e.g., "Carro 1 - Tercer Piso"
+  description       String?
+  totalChromebooks  Int       @default(30) @map("total_chromebooks")
+  location          String?
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  cartCycles        CartCycle[]
+
+  @@map("carts")
+}
+
+model CartCycle {
+  id                String    @id @default(uuid())
+  cartId            String    @map("cart_id")
+  cycleId           String    @map("cycle_id")
+  allocatedQuantity Int       @default(0) @map("allocated_quantity")
+
+  // Relations
+  cart              Cart          @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cycle             Cycle         @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  reservations      Reservation[]
+
+  // Composite unique: one cart per cycle
+  @@unique([cartId, cycleId])
+  @@index([cycleId])
+  @@map("cart_cycles")
+}
+
+model Reservation {
+  id                String            @id @default(uuid())
+  userId            String            @map("user_id")
+  cycleId           String            @map("cycle_id")
+  cartCycleId       String            @map("cart_cycle_id")
+  quantityRequested Int               @map("quantity_requested")
+  quantityApproved  Int?              @map("quantity_approved")
+  status            ReservationStatus @default(PENDIENTE)
+  purpose           String            // Class/reason for the reservation
+  reservationDate   DateTime          @map("reservation_date")
+  startTime         String            @map("start_time") // "HH:mm" format
+  endTime           String            @map("end_time")   // "HH:mm" format
+  notes             String?
+  reviewedBy        String?           @map("reviewed_by") // UUID of admin who reviewed
+  rejectionReason   String?           @map("rejection_reason")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cycle         Cycle          @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  cartCycle     CartCycle      @relation(fields: [cartCycleId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([cartCycleId])
+  @@map("reservations")
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  userId        String           @map("user_id")
+  reservationId String?          @map("reservation_id")
+  type          NotificationType
+  title         String
+  message       String
+  read          Boolean          @default(false)
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservation Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String      @map("user_id")
+  action     AuditAction
+  entityType String      @map("entity_type")
+  entityId   String      @map("entity_id")
+  details    Json?       // Before/after snapshot
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
