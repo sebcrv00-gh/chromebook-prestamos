@@ -12,7 +12,7 @@ const server = app.listen(env.PORT, async () => {
     await prisma.$connect();
     logger.info('✅ Conexión a la base de datos establecida correctamente');
   } catch (error) {
-    logger.warn('⚠️ No se pudo conectar a la base de datos PostgreSQL aún. Por favor asegúrate de configurar DATABASE_URL en backend/.env');
+    logger.warn('⚠️ No se pudo conectar a la base de datos MySQL aún. Por favor asegúrate de configurar DATABASE_URL en backend/.env');
   }
 });
 
