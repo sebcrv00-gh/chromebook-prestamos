@@ -117,6 +117,7 @@ model CartCycle {
   cartId            String    @map("cart_id")
   cycleId           String    @map("cycle_id")
   allocatedQuantity Int       @default(0) @map("allocated_quantity")
+  customName        String?   @map("custom_name")
 
   // Relations
   cart              Cart          @relation(fields: [cartId], references: [id], onDelete: Cascade)

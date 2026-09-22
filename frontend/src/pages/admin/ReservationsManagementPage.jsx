@@ -313,7 +313,7 @@ export const ReservationsManagementPage = () => {
           <div className="modal-content">
             <div className="modal-header">
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Aprobar Solicitud</h3>
-              <button onClick={() => setShowApproveModal(false)} style={styles.closeBtn}>✕</button>
+              <button onClick={() => setShowApproveModal(false)} style={styles.closeBtn}><X size={16} /></button>
             </div>
             <div className="modal-body">
               <div style={styles.approveInfo}>
@@ -341,7 +341,7 @@ export const ReservationsManagementPage = () => {
                 />
                 {parseInt(approvedQty, 10) < approveTarget.quantityRequested && (
                   <p style={{ fontSize: '0.75rem', color: 'var(--color-red-600)', marginTop: '0.25rem' }}>
-                    ⚠ Aprobación parcial: se aprobarán {approvedQty} de {approveTarget.quantityRequested} solicitados
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}><AlertTriangle size={13} /> Aprobación parcial: se aprobarán {approvedQty} de {approveTarget.quantityRequested} solicitados</span>
                   </p>
                 )}
               </div>
@@ -362,7 +362,7 @@ export const ReservationsManagementPage = () => {
           <div className="modal-content">
             <div className="modal-header">
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Rechazar Solicitud</h3>
-              <button onClick={() => setShowRejectModal(false)} style={styles.closeBtn}>✕</button>
+              <button onClick={() => setShowRejectModal(false)} style={styles.closeBtn}><X size={16} /></button>
             </div>
             <div className="modal-body">
               <div style={styles.approveInfo}>

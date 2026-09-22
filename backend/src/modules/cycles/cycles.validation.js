@@ -32,6 +32,7 @@ const createCycleSchema = z
             .number({ required_error: 'Cantidad asignada inválida' })
             .int()
             .min(0, 'La cantidad asignada no puede ser negativa'),
+          customName: z.string().trim().max(100).optional().nullable(),
         })
       )
       .optional(),
@@ -50,9 +51,26 @@ const updateCycleSchema = z.object({
       z.object({
         cartId: z.string().min(1),
         allocatedQuantity: z.coerce.number().int().min(0),
+        customName: z.string().trim().max(100).optional().nullable(),
       })
     )
     .optional(),
 });
 
-module.exports = { createCycleSchema, updateCycleSchema };
+const assignCartToCycleSchema = z.object({
+  cartId: z.string({ required_error: 'ID de carro obligatorio' }).min(1),
+  allocatedQuantity: z.coerce.number({ required_error: 'Cantidad obligatoria' }).int().min(1, 'La cantidad debe ser mayor a 0'),
+  customName: z.string().trim().max(100).optional().nullable(),
+});
+
+const updateCartCycleSchema = z.object({
+  allocatedQuantity: z.coerce.number().int().min(0).optional(),
+  customName: z.string().trim().max(100).optional().nullable(),
+});
+
+module.exports = {
+  createCycleSchema,
+  updateCycleSchema,
+  assignCartToCycleSchema,
+  updateCartCycleSchema,
+};

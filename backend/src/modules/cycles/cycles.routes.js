@@ -3,7 +3,12 @@ const cyclesController = require('./cycles.controller');
 const { authenticate } = require('../../middleware/auth');
 const { authorize } = require('../../middleware/rbac');
 const { validateBody } = require('../../middleware/validate');
-const { createCycleSchema, updateCycleSchema } = require('./cycles.validation');
+const {
+  createCycleSchema,
+  updateCycleSchema,
+  assignCartToCycleSchema,
+  updateCartCycleSchema,
+} = require('./cycles.validation');
 const { ROLES } = require('../../utils/constants');
 
 const router = Router();
@@ -40,6 +45,29 @@ router.patch(
   '/:id/toggle-active',
   authorize(ROLES.ADMIN, ROLES.SUPERADMIN),
   cyclesController.toggleActive
+);
+
+// POST /api/cycles/:id/carts - Assign a cart to cycle (Admin, Superadmin)
+router.post(
+  '/:id/carts',
+  authorize(ROLES.ADMIN, ROLES.SUPERADMIN),
+  validateBody(assignCartToCycleSchema),
+  cyclesController.assignCart
+);
+
+// PATCH /api/cycles/:id/carts/:cartCycleId - Edit cart in cycle (Admin, Superadmin)
+router.patch(
+  '/:id/carts/:cartCycleId',
+  authorize(ROLES.ADMIN, ROLES.SUPERADMIN),
+  validateBody(updateCartCycleSchema),
+  cyclesController.updateCart
+);
+
+// DELETE /api/cycles/:id/carts/:cartCycleId - Remove cart from cycle (Admin, Superadmin)
+router.delete(
+  '/:id/carts/:cartCycleId',
+  authorize(ROLES.ADMIN, ROLES.SUPERADMIN),
+  cyclesController.removeCart
 );
 
 module.exports = router;

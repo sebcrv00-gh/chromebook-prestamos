@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ApiClient from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
-import { Laptop, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Laptop, Plus, Edit2, Trash2, X } from 'lucide-react';
 
 export const CartsManagementPage = () => {
   const [carts, setCarts] = useState([]);
@@ -118,7 +118,7 @@ export const CartsManagementPage = () => {
           <div className="modal-content">
             <div className="modal-header">
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{editingCart ? 'Editar Carro' : 'Nuevo Carro / Kit'}</h3>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-gray-500)' }}><X size={16} /></button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">

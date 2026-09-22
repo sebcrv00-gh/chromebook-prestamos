@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ApiClient from '../../services/api';
 import toast from 'react-hot-toast';
-import { Users, UserPlus, UserCheck, UserX, Search } from 'lucide-react';
+import { UserPlus, UserCheck, UserX, Search, X } from 'lucide-react';
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Todos los roles' },
@@ -174,7 +174,7 @@ export const UsersManagementPage = () => {
           <div className="modal-content">
             <div className="modal-header">
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Crear Nuevo Usuario</h3>
-              <button onClick={() => setShowModal(false)} style={styles.closeBtn}>✕</button>
+              <button onClick={() => setShowModal(false)} style={styles.closeBtn}><X size={16} /></button>
             </div>
             <form onSubmit={handleCreate}>
               <div className="modal-body">

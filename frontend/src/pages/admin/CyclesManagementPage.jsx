@@ -1,7 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ApiClient from '../../services/api';
 import toast from 'react-hot-toast';
-import { GraduationCap, Plus, Edit2, ChevronRight, Layers, Monitor, Power, PowerOff, CheckCircle2 } from 'lucide-react';
+import {
+  GraduationCap,
+  Plus,
+  Edit2,
+  ChevronRight,
+  Layers,
+  Monitor,
+  Power,
+  PowerOff,
+  Calendar,
+  ShoppingCart,
+  Info,
+  X,
+  Trash2,
+  Tag,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
 
 const CYCLE_TYPES = [
   { value: 'EXPLORATORIO', label: 'Exploratorio', defaultGrades: 'Transición a 2°' },
@@ -15,6 +32,7 @@ export const CyclesManagementPage = () => {
   const [carts, setCarts] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Cycle Modal State
   const [showCycleModal, setShowCycleModal] = useState(false);
   const [editingCycle, setEditingCycle] = useState(null);
   const [cycleName, setCycleName] = useState('');
@@ -23,11 +41,34 @@ export const CyclesManagementPage = () => {
   const [gradeRange, setGradeRange] = useState('');
   const [cycleDescription, setCycleDescription] = useState('');
   const [cycleActive, setCycleActive] = useState(false);
-  const [cartAllocations, setCartAllocations] = useState({}); // { cartId: allocatedQuantity }
+
+  // Assigned carts inside cycle modal: [{ cartId, allocatedQuantity, customName }]
+  const [modalAssignedCarts, setModalAssignedCarts] = useState([]);
+  const [selectedCartToAdd, setSelectedCartToAdd] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
-
   const [expandedId, setExpandedId] = useState(null);
+
+  // Quick Cart Modal State (for assigning/editing a cart directly in expanded cycle view)
+  const [cartModalState, setCartModalState] = useState({
+    isOpen: false,
+    mode: 'ASSIGN', // 'ASSIGN' | 'EDIT'
+    cycle: null,
+    cartCycleId: null,
+    cartId: '',
+    customName: '',
+    allocatedQuantity: 30,
+    saving: false,
+  });
+
+  // Delete Cart Confirmation Modal
+  const [deleteConfirmState, setDeleteConfirmState] = useState({
+    isOpen: false,
+    cycle: null,
+    cartCycle: null,
+    deleting: false,
+  });
 
   useEffect(() => {
     fetchData();
@@ -41,12 +82,12 @@ export const CyclesManagementPage = () => {
     }
   }, [cycleType, editingCycle]);
 
-  const totals = useMemo(() => {
-    const items = Object.entries(cartAllocations || {});
-    const cartCount = items.filter(([, qty]) => Number(qty) > 0).length;
-    const chromebookCount = items.reduce((sum, [, qty]) => sum + (Number(qty) || 0), 0);
+  const modalTotals = useMemo(() => {
+    const validCarts = modalAssignedCarts.filter((c) => Number(c.allocatedQuantity) > 0);
+    const cartCount = validCarts.length;
+    const chromebookCount = validCarts.reduce((sum, c) => sum + (Number(c.allocatedQuantity) || 0), 0);
     return { cartCount, chromebookCount };
-  }, [cartAllocations]);
+  }, [modalAssignedCarts]);
 
   const fetchData = async () => {
     try {
@@ -72,9 +113,13 @@ export const CyclesManagementPage = () => {
       setGradeRange(cycle.gradeRange || '');
       setCycleDescription(cycle.description || '');
       setCycleActive(cycle.active !== undefined ? cycle.active : false);
-      const alloc = {};
-      (cycle.cartCycles || []).forEach((cc) => { if (cc.cartId) alloc[cc.cartId] = cc.allocatedQuantity; });
-      setCartAllocations(alloc);
+
+      const assigned = (cycle.cartCycles || []).map((cc) => ({
+        cartId: cc.cartId,
+        customName: cc.customName || '',
+        allocatedQuantity: cc.allocatedQuantity || 0,
+      }));
+      setModalAssignedCarts(assigned);
     } else {
       setEditingCycle(null);
       setCycleName('');
@@ -83,14 +128,46 @@ export const CyclesManagementPage = () => {
       setGradeRange(CYCLE_TYPES[1].defaultGrades);
       setCycleDescription('');
       setCycleActive(false);
-      setCartAllocations({});
+      setModalAssignedCarts([]);
     }
+    setSelectedCartToAdd('');
     setShowCycleModal(true);
   };
 
-  const updateAllocation = (cartId, value) => {
-    const n = Math.max(0, parseInt(value, 10) || 0);
-    setCartAllocations((prev) => ({ ...prev, [cartId]: n }));
+  const handleAddCartToModal = (cartId) => {
+    if (!cartId) return;
+    const existing = modalAssignedCarts.find((c) => c.cartId === cartId);
+    if (existing) {
+      toast.error('Este carro ya está en la lista del ciclo');
+      return;
+    }
+    const cartInfo = carts.find((c) => c.id === cartId);
+    setModalAssignedCarts((prev) => [
+      ...prev,
+      {
+        cartId,
+        customName: '',
+        allocatedQuantity: cartInfo?.totalChromebooks || 30,
+      },
+    ]);
+    setSelectedCartToAdd('');
+  };
+
+  const handleRemoveCartFromModal = (cartId) => {
+    setModalAssignedCarts((prev) => prev.filter((c) => c.cartId !== cartId));
+  };
+
+  const handleUpdateModalCart = (cartId, field, value) => {
+    setModalAssignedCarts((prev) =>
+      prev.map((c) => {
+        if (c.cartId !== cartId) return c;
+        if (field === 'allocatedQuantity') {
+          const num = Math.max(0, parseInt(value, 10) || 0);
+          return { ...c, allocatedQuantity: num };
+        }
+        return { ...c, [field]: value };
+      })
+    );
   };
 
   const handleToggleActive = async (cycleId) => {
@@ -119,9 +196,13 @@ export const CyclesManagementPage = () => {
         return;
       }
 
-      const cartCycles = Object.entries(cartAllocations)
-        .filter(([, qty]) => Number(qty) > 0)
-        .map(([cartId, allocatedQuantity]) => ({ cartId, allocatedQuantity: Number(allocatedQuantity) }));
+      const cartCycles = modalAssignedCarts
+        .filter((c) => Number(c.allocatedQuantity) > 0)
+        .map((c) => ({
+          cartId: c.cartId,
+          allocatedQuantity: Number(c.allocatedQuantity),
+          customName: c.customName?.trim() || null,
+        }));
 
       const payload = {
         name: cycleName.trim(),
@@ -150,12 +231,113 @@ export const CyclesManagementPage = () => {
     }
   };
 
+  // ── Quick Cart Assignment/Edit Handlers ──
+  const openAssignCartModal = (cycle) => {
+    const assignedIds = new Set((cycle.cartCycles || []).map((cc) => cc.cartId));
+    const available = carts.filter((c) => !assignedIds.has(c.id));
+
+    if (available.length === 0) {
+      toast.error('Todos los carros existentes ya están asignados a este ciclo');
+      return;
+    }
+
+    const firstCart = available[0];
+    setCartModalState({
+      isOpen: true,
+      mode: 'ASSIGN',
+      cycle,
+      cartCycleId: null,
+      cartId: firstCart.id,
+      customName: '',
+      allocatedQuantity: firstCart.totalChromebooks || 30,
+      saving: false,
+    });
+  };
+
+  const openEditCartModal = (cycle, cc) => {
+    setCartModalState({
+      isOpen: true,
+      mode: 'EDIT',
+      cycle,
+      cartCycleId: cc.id,
+      cartId: cc.cartId,
+      customName: cc.customName || '',
+      allocatedQuantity: cc.allocatedQuantity || 0,
+      saving: false,
+    });
+  };
+
+  const handleSaveQuickCart = async (e) => {
+    e.preventDefault();
+    const { mode, cycle, cartCycleId, cartId, customName, allocatedQuantity } = cartModalState;
+
+    if (Number(allocatedQuantity) <= 0) {
+      toast.error('La cantidad asignada debe ser mayor a 0');
+      return;
+    }
+
+    setCartModalState((prev) => ({ ...prev, saving: true }));
+    try {
+      if (mode === 'ASSIGN') {
+        await ApiClient.post(`/cycles/${cycle.id}/carts`, {
+          cartId,
+          allocatedQuantity: Number(allocatedQuantity),
+          customName: customName.trim() || null,
+        });
+        toast.success('Carro asignado al ciclo exitosamente');
+      } else {
+        await ApiClient.patch(`/cycles/${cycle.id}/carts/${cartCycleId}`, {
+          allocatedQuantity: Number(allocatedQuantity),
+          customName: customName.trim() || null,
+        });
+        toast.success('Carro actualizado exitosamente para este ciclo');
+      }
+      setCartModalState((prev) => ({ ...prev, isOpen: false }));
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || 'Error al procesar carro en el ciclo');
+    } finally {
+      setCartModalState((prev) => ({ ...prev, saving: false }));
+    }
+  };
+
+  const openDeleteConfirmModal = (cycle, cartCycle) => {
+    setDeleteConfirmState({
+      isOpen: true,
+      cycle,
+      cartCycle,
+      deleting: false,
+    });
+  };
+
+  const handleConfirmDeleteCart = async () => {
+    const { cycle, cartCycle } = deleteConfirmState;
+    if (!cycle || !cartCycle) return;
+
+    setDeleteConfirmState((prev) => ({ ...prev, deleting: true }));
+    try {
+      await ApiClient.delete(`/cycles/${cycle.id}/carts/${cartCycle.id}`);
+      toast.success('Carro eliminado del ciclo correctamente');
+      setDeleteConfirmState({ isOpen: false, cycle: null, cartCycle: null, deleting: false });
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || 'Error al eliminar carro del ciclo');
+      setDeleteConfirmState((prev) => ({ ...prev, deleting: false }));
+    }
+  };
+
+  // Carts available to add in the full cycle modal
+  const modalAvailableCarts = useMemo(() => {
+    const assignedIds = new Set(modalAssignedCarts.map((c) => c.cartId));
+    return carts.filter((c) => !assignedIds.has(c.id));
+  }, [carts, modalAssignedCarts]);
+
   return (
     <div className="container animate-fade-in-up">
       <div className="page-header">
         <div>
           <h1 className="page-title">Ciclos Académicos y Carros</h1>
-          <p className="page-subtitle">Gestiona los ciclos por rango de grados y asigna Chromebooks por carro</p>
+          <p className="page-subtitle">Gestiona los ciclos por rango de grados y asigna o personaliza Chromebooks por carro</p>
         </div>
         <button onClick={() => openCycleModal()} className="btn btn-primary">
           <Plus size={18} />
@@ -196,10 +378,18 @@ export const CyclesManagementPage = () => {
                         <span className="badge badge-parcial">{cycle.type}</span>
                       </div>
                       <div style={{ display: 'flex', gap: '1rem', marginTop: '0.35rem', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--color-gray-500)' }}>
-                        <span>🎓 Grados: <strong style={{ color: 'var(--color-gray-800)' }}>{cycle.gradeRange}</strong></span>
-                        <span>📅 {cycle.year}</span>
-                        <span>🛒 {(cycle.cartCycles || []).length} carros</span>
-                        <span>💻 <strong style={{ color: 'var(--color-gray-900)' }}>{available}</strong> disponibles / {total} asignados</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <GraduationCap size={13} /> Grados: <strong style={{ color: 'var(--color-gray-800)' }}>{cycle.gradeRange}</strong>
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Calendar size={13} /> {cycle.year}
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <ShoppingCart size={13} /> {(cycle.cartCycles || []).length} carros
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Monitor size={13} /> <strong style={{ color: 'var(--color-gray-900)' }}>{available}</strong> disponibles / {total} asignados
+                        </span>
                       </div>
                       {cycle.description && (
                         <p style={{ fontSize: '0.78rem', color: 'var(--color-gray-400)', marginTop: '0.25rem', fontStyle: 'italic' }}>
@@ -222,10 +412,14 @@ export const CyclesManagementPage = () => {
                         <><Power size={14} /> Activar</>
                       )}
                     </button>
-                    <button onClick={() => openCycleModal(cycle)} className="btn btn-secondary btn-sm" title="Editar ciclo">
-                      <Edit2 size={14} /> Editar
+                    <button onClick={() => openCycleModal(cycle)} className="btn btn-secondary btn-sm" title="Editar ciclo completo">
+                      <Edit2 size={14} /> Editar Ciclo
                     </button>
-                    <button onClick={() => setExpandedId(isExpanded ? null : cycle.id)} className="btn btn-secondary btn-sm">
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : cycle.id)}
+                      className="btn btn-secondary btn-sm"
+                      title={isExpanded ? 'Ocultar carros' : 'Ver y gestionar carros'}
+                    >
                       {isExpanded ? <ChevronRight size={14} style={{ transform: 'rotate(90deg)' }} /> : <ChevronRight size={14} />}
                     </button>
                   </div>
@@ -233,45 +427,103 @@ export const CyclesManagementPage = () => {
 
                 {isExpanded && (
                   <div style={styles.assignSection}>
-                    <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-gray-700)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Layers size={16} /> Disponibilidad real de Carros en este Ciclo
-                    </h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-gray-700)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                        <Layers size={16} /> Carros asignados en este Ciclo
+                      </h4>
+                      <button
+                        onClick={() => openAssignCartModal(cycle)}
+                        className="btn btn-primary btn-sm"
+                        style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
+                      >
+                        <Plus size={14} /> Asignar Carro al Ciclo
+                      </button>
+                    </div>
+
                     {cycle.cartCycles && cycle.cartCycles.length > 0 ? (
                       <div className="table-container">
                         <table className="table">
                           <thead>
                             <tr>
-                              <th>Carro de Chromebooks</th>
-                              <th>Ubicación</th>
-                              <th>Asignados al ciclo</th>
+                              <th>Nombre en este Ciclo</th>
+                              <th>Carro Físico / Ubicación</th>
+                              <th>Asignados</th>
                               <th>Reservados</th>
                               <th>Disponibles</th>
+                              <th style={{ textAlign: 'right' }}>Acciones</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {cycle.cartCycles.map((cc) => (
-                              <tr key={cc.id}>
-                                <td style={{ fontWeight: 600 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <Monitor size={14} color="var(--color-primary)" />
-                                    {cc.cart?.name || 'N/A'}
-                                  </div>
-                                </td>
-                                <td style={{ color: 'var(--color-gray-500)' }}>{cc.cart?.location || '—'}</td>
-                                <td>{cc.allocatedQuantity}</td>
-                                <td>{cc.reservedQuantity}</td>
-                                <td style={{ fontWeight: 700, color: cc.availableQuantity <= 0 ? 'var(--color-red-600)' : 'var(--color-success-700)' }}>
-                                  {cc.availableQuantity} libres
-                                </td>
-                              </tr>
-                            ))}
+                            {cycle.cartCycles.map((cc) => {
+                              const displayName = cc.customName || cc.cart?.name || 'N/A';
+                              const hasCustomName = Boolean(cc.customName);
+                              return (
+                                <tr key={cc.id}>
+                                  <td>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <Monitor size={15} color="var(--color-primary)" style={{ flexShrink: 0 }} />
+                                      <div>
+                                        <div style={{ fontWeight: 600, color: 'var(--color-gray-900)' }}>
+                                          {displayName}
+                                        </div>
+                                        {hasCustomName && (
+                                          <div style={{ fontSize: '0.72rem', color: 'var(--color-gray-400)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            <Tag size={10} /> Original: {cc.cart?.originalName || cc.cart?.name}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ color: 'var(--color-gray-500)', fontSize: '0.85rem' }}>
+                                    {cc.cart?.location || 'Sin ubicación fijada'}
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)' }}>
+                                      Capacidad total: {cc.cart?.totalChromebooks || 0} equipos
+                                    </div>
+                                  </td>
+                                  <td style={{ fontWeight: 600 }}>{cc.allocatedQuantity}</td>
+                                  <td style={{ color: 'var(--color-gray-600)' }}>{cc.reservedQuantity}</td>
+                                  <td style={{ fontWeight: 700, color: cc.availableQuantity <= 0 ? 'var(--color-red-600)' : 'var(--color-success-700)' }}>
+                                    {cc.availableQuantity} libres
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                                      <button
+                                        onClick={() => openEditCartModal(cycle, cc)}
+                                        className="btn btn-secondary btn-sm"
+                                        title="Editar nombre y cantidad en este ciclo"
+                                        style={{ padding: '0.3rem 0.5rem' }}
+                                      >
+                                        <Edit2 size={13} />
+                                      </button>
+                                      <button
+                                        onClick={() => openDeleteConfirmModal(cycle, cc)}
+                                        className="btn btn-secondary btn-sm"
+                                        title="Eliminar carro de este ciclo"
+                                        style={{ padding: '0.3rem 0.5rem', color: 'var(--color-red-600)', borderColor: 'var(--color-red-200)' }}
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
                     ) : (
-                      <p style={{ fontSize: '0.85rem', color: 'var(--color-gray-400)', padding: '1rem', textAlign: 'center', backgroundColor: 'var(--color-gray-50)', borderRadius: 'var(--radius-md)' }}>
-                        No hay carros asignados a este ciclo. Edita el ciclo para agregar asignaciones.
-                      </p>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--color-gray-500)', padding: '1.5rem', textAlign: 'center', backgroundColor: 'var(--color-white)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--color-border)' }}>
+                        <p style={{ margin: 0, fontWeight: 500 }}>No hay carros asignados a este ciclo todavía.</p>
+                        <p style={{ margin: '0.35rem 0 0.75rem 0', fontSize: '0.78rem', color: 'var(--color-gray-400)' }}>
+                          Asigna carros para que los docentes puedan reservar Chromebooks durante este ciclo.
+                        </p>
+                        <button
+                          onClick={() => openAssignCartModal(cycle)}
+                          className="btn btn-primary btn-sm"
+                        >
+                          <Plus size={14} /> Asignar Primer Carro
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -281,18 +533,66 @@ export const CyclesManagementPage = () => {
         )}
       </div>
 
-      {/* ── Cycle Create/Edit Modal ── */}
+      {/* ── Cycle Create/Edit Full Modal ── */}
       {showCycleModal && (
-        <div className="modal-overlay" onClick={(e) => e.target.classList.contains('modal-overlay') && !saving && setShowCycleModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '640px' }}>
+        <div
+          className="modal-overlay"
+          onClick={(e) => e.target.classList.contains('modal-overlay') && !saving && setShowCycleModal(false)}
+        >
+          <div
+            className="modal-content animate-fade-in-up"
+            style={{
+              maxWidth: '780px',
+              width: '95%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              borderRadius: 'var(--radius-xl)',
+              overflow: 'hidden',
+            }}
+          >
             <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>
-                {editingCycle ? 'Editar Ciclo Académico' : 'Nuevo Ciclo Académico'}
-              </h3>
-              <button onClick={() => !saving && setShowCycleModal(false)} style={styles.closeBtn} disabled={saving}>✕</button>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--color-gray-900)' }}>
+                  {editingCycle ? 'Editar Ciclo Académico' : 'Nuevo Ciclo Académico'}
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--color-gray-500)', margin: '0.15rem 0 0 0' }}>
+                  {editingCycle
+                    ? 'Modifica las características del ciclo y administra los carros asignados'
+                    : 'Crea un ciclo por grados y asigna los carros correspondientes'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !saving && setShowCycleModal(false)}
+                style={styles.closeBtn}
+                disabled={saving}
+              >
+                <X size={18} />
+              </button>
             </div>
-            <form onSubmit={handleSaveCycle}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+            <form
+              onSubmit={handleSaveCycle}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                minHeight: 0,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                className="modal-body"
+                style={{
+                  padding: '1.5rem',
+                  overflowY: 'auto',
+                  flex: '1 1 auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                }}
+              >
                 <div className="form-group">
                   <label className="form-label">Nombre del Ciclo</label>
                   <input
@@ -305,7 +605,7 @@ export const CyclesManagementPage = () => {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                   <div className="form-group">
                     <label className="form-label">Tipo de Ciclo</label>
                     <select className="form-control" value={cycleType} onChange={(e) => setCycleType(e.target.value)}>
@@ -346,79 +646,339 @@ export const CyclesManagementPage = () => {
                   />
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input type="checkbox" id="cycle-active" checked={cycleActive} onChange={(e) => setCycleActive(e.target.checked)} />
-                  <label htmlFor="cycle-active" style={{ fontSize: '0.875rem', color: 'var(--color-gray-700)', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.75rem 1rem', backgroundColor: 'var(--color-gray-50)', borderRadius: 'var(--radius-md)' }}>
+                  <input
+                    type="checkbox"
+                    id="cycle-active"
+                    checked={cycleActive}
+                    onChange={(e) => setCycleActive(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="cycle-active" style={{ fontSize: '0.85rem', color: 'var(--color-gray-800)', cursor: 'pointer', margin: 0, fontWeight: 500 }}>
                     Activar este ciclo inmediatamente (los demás ciclos activos se desactivarán automáticamente)
                   </label>
                 </div>
 
-                {/* Cart allocation section */}
-                <div>
+                {/* ── Cart Allocation & Per-Cycle Naming Section ── */}
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1.25rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Layers size={15} /> Asignar Chromebooks por Carro
-                    </label>
-                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', fontWeight: 600 }}>
-                      <span style={{ padding: '0.3rem 0.7rem', backgroundColor: 'var(--color-primary-50)', color: 'var(--color-primary-700)', borderRadius: 'var(--radius-full)' }}>
-                        🛒 {totals.cartCount} carritos
+                    <div>
+                      <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', fontWeight: 600 }}>
+                        <Layers size={16} /> Carros y Nombres para este Ciclo
+                      </label>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)', margin: '0.15rem 0 0 0' }}>
+                        Personaliza el nombre de cada carro para este ciclo y asigna su stock de Chromebooks
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.8rem', fontWeight: 600 }}>
+                      <span style={{ padding: '0.25rem 0.65rem', backgroundColor: 'var(--color-primary-50)', color: 'var(--color-primary-700)', borderRadius: 'var(--radius-full)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <ShoppingCart size={13} /> {modalTotals.cartCount} carros
                       </span>
-                      <span style={{ padding: '0.3rem 0.7rem', backgroundColor: 'var(--color-success-50)', color: 'var(--color-success-700)', borderRadius: 'var(--radius-full)' }}>
-                        💻 {totals.chromebookCount} Chromebooks
+                      <span style={{ padding: '0.25rem 0.65rem', backgroundColor: 'var(--color-success-50)', color: 'var(--color-success-700)', borderRadius: 'var(--radius-full)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Monitor size={13} /> {modalTotals.chromebookCount} Chromebooks
                       </span>
                     </div>
                   </div>
 
-                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 90px', padding: '0.65rem 1rem', backgroundColor: 'var(--color-gray-50)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-gray-600)', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                      <div>Carro de Chromebooks</div>
-                      <div>Ubicación / Capacidad total</div>
-                      <div style={{ textAlign: 'right' }}>Asignar</div>
-                    </div>
-                    {carts.length === 0 ? (
-                      <div style={{ padding: '1.5rem 1rem', textAlign: 'center', color: 'var(--color-gray-500)', fontSize: '0.85rem' }}>
-                        No hay carros disponibles. Crea primero los carros desde el administrador.
+                  {/* List of assigned carts in this modal */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '1rem' }}>
+                    {modalAssignedCarts.length === 0 ? (
+                      <div style={{ padding: '1.5rem', textAlign: 'center', backgroundColor: 'var(--color-gray-50)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--color-border)' }}>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-gray-500)' }}>
+                          No hay carros asignados a este ciclo todavía.
+                        </p>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: 'var(--color-gray-400)' }}>
+                          Usa el selector abajo para agregar carros físicos a este ciclo.
+                        </p>
                       </div>
                     ) : (
-                      carts.map((c) => (
-                        <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 90px', padding: '0.65rem 1rem', alignItems: 'center', borderTop: '1px solid var(--color-border)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Monitor size={14} color="var(--color-primary)" />
+                      modalAssignedCarts.map((item) => {
+                        const cartData = carts.find((c) => c.id === item.cartId);
+                        const maxCap = cartData?.totalChromebooks || 30;
+                        return (
+                          <div
+                            key={item.cartId}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'minmax(200px, 1.4fr) minmax(130px, 1.2fr) 95px 40px',
+                              alignItems: 'center',
+                              gap: '0.75rem',
+                              padding: '0.75rem 1rem',
+                              backgroundColor: 'var(--color-white)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                            }}
+                          >
+                            {/* Original Cart Info */}
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{c.name}</div>
-                              {c.description && <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)' }}>{c.description}</div>}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.85rem' }}>
+                                <Monitor size={14} color="var(--color-primary)" />
+                                {cartData?.name || 'Carro'}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--color-gray-400)', marginTop: '0.15rem' }}>
+                                {cartData?.location || 'Sin ubicación'} • Cap: {maxCap} equipos
+                              </div>
+                            </div>
+
+                            {/* Custom Name in this Cycle */}
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-gray-500)', marginBottom: '0.2rem', fontWeight: 500 }}>
+                                Nombre en este ciclo:
+                              </label>
+                              <input
+                                type="text"
+                                className="form-control"
+                                placeholder={cartData?.name || 'Nombre para el ciclo...'}
+                                value={item.customName}
+                                onChange={(e) => handleUpdateModalCart(item.cartId, 'customName', e.target.value)}
+                                style={{ fontSize: '0.8rem', padding: '0.35rem 0.5rem' }}
+                              />
+                            </div>
+
+                            {/* Allocated Quantity */}
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-gray-500)', marginBottom: '0.2rem', fontWeight: 500, textAlign: 'right' }}>
+                                Asignar:
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                max={maxCap}
+                                value={item.allocatedQuantity}
+                                onChange={(e) => handleUpdateModalCart(item.cartId, 'allocatedQuantity', e.target.value)}
+                                className="form-control"
+                                style={{ textAlign: 'right', fontSize: '0.85rem', fontWeight: 600, padding: '0.35rem 0.5rem' }}
+                              />
+                            </div>
+
+                            {/* Delete Cart from this cycle */}
+                            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '1rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveCartFromModal(item.cartId)}
+                                title="Eliminar carro de este ciclo"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: 'var(--color-red-500)',
+                                  padding: '0.35rem',
+                                  borderRadius: 'var(--radius-sm)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
                             </div>
                           </div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--color-gray-500)' }}>
-                            {c.location || 'Ubicación no definida'}
-                            <div style={{ fontWeight: 600, color: 'var(--color-gray-700)' }}>Capacidad: {c.totalChromebooks || 0} equipos</div>
-                          </div>
-                          <div>
-                            <input
-                              type="number"
-                              min="0"
-                              max={c.totalChromebooks || 999}
-                              value={cartAllocations[c.id] ?? 0}
-                              onChange={(e) => updateAllocation(c.id, e.target.value)}
-                              style={{ width: '100%', padding: '0.35rem 0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', textAlign: 'right', fontSize: '0.875rem', fontWeight: 600 }}
-                            />
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)', marginTop: '0.5rem' }}>
-                    ✎ Define cuántos Chromebooks de cada carro estarán disponibles para préstamo durante este ciclo. Si dejas 0, ese carro no aparecerá a los docentes.
-                  </p>
+
+                  {/* Add another cart dropdown */}
+                  {modalAvailableCarts.length > 0 ? (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <select
+                        className="form-control"
+                        value={selectedCartToAdd}
+                        onChange={(e) => handleAddCartToModal(e.target.value)}
+                        style={{ fontSize: '0.85rem', borderColor: 'var(--color-primary-300)', backgroundColor: 'var(--color-primary-50)' }}
+                      >
+                        <option value="">+ Asignar otro carro a este ciclo...</option>
+                        {modalAvailableCarts.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} — {c.location || 'Sin ubicación'} (Cap: {c.totalChromebooks || 30} equipos)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', margin: 0, fontStyle: 'italic' }}>
+                      Todos los carros físicos existentes en el sistema están asignados a este ciclo.
+                    </p>
+                  )}
                 </div>
               </div>
+
               <div className="modal-footer">
-                <button type="button" onClick={() => !saving && setShowCycleModal(false)} className="btn btn-secondary" disabled={saving}>Cancelar</button>
+                <button type="button" onClick={() => !saving && setShowCycleModal(false)} className="btn btn-secondary" disabled={saving}>
+                  Cancelar
+                </button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Guardando...' : editingCycle ? 'Actualizar Ciclo' : 'Crear Ciclo'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Assign / Edit Cart Modal (from expanded list) ── */}
+      {cartModalState.isOpen && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => e.target.classList.contains('modal-overlay') && !cartModalState.saving && setCartModalState((prev) => ({ ...prev, isOpen: false }))}
+        >
+          <div className="modal-content animate-fade-in-up" style={{ maxWidth: '520px' }}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--color-gray-900)' }}>
+                  {cartModalState.mode === 'ASSIGN' ? 'Asignar Carro al Ciclo' : 'Editar Carro en el Ciclo'}
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--color-gray-500)', margin: '0.15rem 0 0 0' }}>
+                  {cartModalState.cycle?.name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !cartModalState.saving && setCartModalState((prev) => ({ ...prev, isOpen: false }))}
+                style={styles.closeBtn}
+                disabled={cartModalState.saving}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickCart}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {cartModalState.mode === 'ASSIGN' ? (
+                  <div className="form-group">
+                    <label className="form-label">Selecciona el Carro Físico</label>
+                    <select
+                      className="form-control"
+                      required
+                      value={cartModalState.cartId}
+                      onChange={(e) => {
+                        const cid = e.target.value;
+                        const cartObj = carts.find((c) => c.id === cid);
+                        setCartModalState((prev) => ({
+                          ...prev,
+                          cartId: cid,
+                          allocatedQuantity: cartObj?.totalChromebooks || 30,
+                        }));
+                      }}
+                    >
+                      {carts
+                        .filter((c) => !(cartModalState.cycle?.cartCycles || []).some((cc) => cc.cartId === c.id))
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} — {c.location || 'Sin ubicación'} (Cap: {c.totalChromebooks} equipos)
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-gray-50)', borderRadius: 'var(--radius-md)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)' }}>Carro original de hardware:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--color-gray-800)', marginTop: '0.15rem' }}>
+                      {carts.find((c) => c.id === cartModalState.cartId)?.name || 'Carro'}
+                    </div>
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Nombre en este ciclo <span style={{ fontWeight: 400, color: 'var(--color-gray-500)', fontSize: '0.75rem' }}>(Opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Ej: Carro Transición, Carro 1° y 2°, etc."
+                    value={cartModalState.customName}
+                    onChange={(e) => setCartModalState((prev) => ({ ...prev, customName: e.target.value }))}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)', marginTop: '0.25rem' }}>
+                    Si se deja vacío, mantendrá el nombre original del carro.
+                  </p>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Chromebooks Asignados a este Ciclo</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={carts.find((c) => c.id === cartModalState.cartId)?.totalChromebooks || 999}
+                    required
+                    className="form-control"
+                    value={cartModalState.allocatedQuantity}
+                    onChange={(e) => setCartModalState((prev) => ({ ...prev, allocatedQuantity: e.target.value }))}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)', marginTop: '0.25rem' }}>
+                    Capacidad máxima física de este carro: {carts.find((c) => c.id === cartModalState.cartId)?.totalChromebooks || 30} equipos.
+                  </p>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  onClick={() => !cartModalState.saving && setCartModalState((prev) => ({ ...prev, isOpen: false }))}
+                  className="btn btn-secondary"
+                  disabled={cartModalState.saving}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={cartModalState.saving}>
+                  {cartModalState.saving ? 'Guardando...' : cartModalState.mode === 'ASSIGN' ? 'Asignar Carro' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Cart Confirmation Modal ── */}
+      {deleteConfirmState.isOpen && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => e.target.classList.contains('modal-overlay') && !deleteConfirmState.deleting && setDeleteConfirmState((prev) => ({ ...prev, isOpen: false }))}
+        >
+          <div className="modal-content animate-fade-in-up" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: 'var(--color-red-600)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <AlertCircle size={18} /> Quitar Carro del Ciclo
+              </h3>
+              <button
+                type="button"
+                onClick={() => !deleteConfirmState.deleting && setDeleteConfirmState((prev) => ({ ...prev, isOpen: false }))}
+                style={styles.closeBtn}
+                disabled={deleteConfirmState.deleting}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.25rem' }}>
+              <p style={{ fontSize: '0.9rem', color: 'var(--color-gray-700)', margin: 0, lineHeight: 1.5 }}>
+                ¿Estás seguro de que deseas eliminar la asignación del carro{' '}
+                <strong>"{deleteConfirmState.cartCycle?.customName || deleteConfirmState.cartCycle?.cart?.name || 'este carro'}"</strong>{' '}
+                del ciclo <strong>"{deleteConfirmState.cycle?.name}"</strong>?
+              </p>
+              <p style={{ fontSize: '0.78rem', color: 'var(--color-gray-500)', marginTop: '0.5rem', margin: 0 }}>
+                El carro físico seguirá existiendo en el sistema general, pero ya no estará disponible para préstamos en este ciclo escolar.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                onClick={() => !deleteConfirmState.deleting && setDeleteConfirmState((prev) => ({ ...prev, isOpen: false }))}
+                className="btn btn-secondary"
+                disabled={deleteConfirmState.deleting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteCart}
+                className="btn btn-danger"
+                disabled={deleteConfirmState.deleting}
+              >
+                {deleteConfirmState.deleting ? 'Eliminando...' : 'Sí, Quitar Carro'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -439,17 +999,20 @@ const styles = {
     flexShrink: 0,
   },
   assignSection: {
-    padding: '1rem',
+    padding: '1.25rem',
     backgroundColor: 'var(--color-gray-50)',
     borderRadius: 'var(--radius-md)',
     borderTop: '1px solid var(--color-border)',
+    marginTop: '0.5rem',
   },
   closeBtn: {
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    fontSize: '1.1rem',
     color: 'var(--color-gray-500)',
     padding: '0.25rem 0.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 };

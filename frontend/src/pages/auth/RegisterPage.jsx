@@ -46,7 +46,6 @@ export const RegisterPage = () => {
       if (res.success) {
         toast.success('¡Usuario registrado exitosamente! Ahora puedes iniciar sesión.', {
           duration: 5000,
-          icon: '🎉',
           style: {
             padding: '1rem 1.25rem',
             fontWeight: 600,

@@ -65,6 +65,36 @@ class CyclesController {
       next(error);
     }
   }
+
+  async assignCart(req, res, next) {
+    try {
+      const cycle = await cyclesService.assignCartToCycle(req.params.id, req.body);
+      return ApiResponse.success(res, cycle, 'Carro asignado al ciclo exitosamente');
+    } catch (error) {
+      if (error.statusCode) return ApiResponse.error(res, error.message, error.statusCode);
+      next(error);
+    }
+  }
+
+  async updateCart(req, res, next) {
+    try {
+      const cycle = await cyclesService.updateCartCycle(req.params.id, req.params.cartCycleId, req.body);
+      return ApiResponse.success(res, cycle, 'Carro del ciclo actualizado exitosamente');
+    } catch (error) {
+      if (error.statusCode) return ApiResponse.error(res, error.message, error.statusCode);
+      next(error);
+    }
+  }
+
+  async removeCart(req, res, next) {
+    try {
+      const cycle = await cyclesService.removeCartFromCycle(req.params.id, req.params.cartCycleId);
+      return ApiResponse.success(res, cycle, 'Carro removido del ciclo exitosamente');
+    } catch (error) {
+      if (error.statusCode) return ApiResponse.error(res, error.message, error.statusCode);
+      next(error);
+    }
+  }
 }
 
 module.exports = new CyclesController();

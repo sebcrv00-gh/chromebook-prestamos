@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ApiClient from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
-import { UserPlus, UserCheck, UserX, Shield } from 'lucide-react';
+import { UserPlus, UserCheck, UserX, Shield, X } from 'lucide-react';
 
 export const AdminsManagementPage = () => {
   const [admins, setAdmins] = useState([]);
@@ -123,7 +123,7 @@ export const AdminsManagementPage = () => {
           <div className="modal-content">
             <div className="modal-header">
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Crear Nuevo Administrador</h3>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-gray-500)' }}><X size={16} /></button>
             </div>
             <form onSubmit={handleCreateAdmin}>
               <div className="modal-body">
